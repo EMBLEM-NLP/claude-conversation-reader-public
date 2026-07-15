@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm list *)",
+      "Bash(/c/Users/romar/AppData/Roaming/npm/claude.cmd --version)",
+      "Bash(git add *)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .githooks/stop-git-check.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .githooks/post-edit-update.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

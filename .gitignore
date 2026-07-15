@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment & secrets
+.env
+.session.json
+
+# Local Claude exports and generated databases
+.claude/conversations.json
+.claude/memories.json
+.claude/projects.json
+.claude/users.json
+.claude/worktrees/
+*.sqlite
+
+# Real conversation sample/fixture data — never commit (see incident 2026-07-15:
+# sample-conversations.json leaked 100 real conversations into git history)
+sample-conversations.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE (local only, .vscode is tracked)
+*.swp
+*.swo
+
+# Generated reports
+*-report.md
+
+# Graph export artifacts
+graph.html
+graph.png
+graph-screenshot.png
+test-graph.*
+vis-network.min.js
+
+# SQLite backup/temp files
+*.sqlite.bak
+*.sqlite-shm
+*.sqlite-wal
+
+# Discovery/fetch artifacts (contain real session payloads — never commit)
+code-api-*.json
+fetched-session_*.json
+probe-session_*.json
+probe-session_*.png
+
+# Logs
+*.log
+npm-debug.log*

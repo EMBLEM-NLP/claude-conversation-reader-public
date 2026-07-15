@@ -1,0 +1,44 @@
+#!/bin/bash
+# @file pre-commit
+# @description Pre-commit hook — typecheck, lint, sensitive file guard
+# @version 1.0.0
+# @created 2026-04-15T17:15:45Z
+# @lastUpdated 2026-04-15T17:15:45Z
+
+set -euo pipefail
+
+echo "pre-commit: running checks..."
+
+# ── 1. Sensitive file guard ──────────────────────────────────
+# Block commits of files that should never be tracked
+BLOCKED_PATTERNS=".env|.session.json|*.sqlite$|*.sqlite-shm$|*.sqlite-wal$"
+staged_files=$(git diff --cached --name-only)
+
+for f in $staged_files; do
+  if echo "$f" | grep -qE "$BLOCKED_PATTERNS"; then
+    echo "BLOCKED: '$f' matches a sensitive file pattern." >&2
+    echo "Remove it from staging: git reset HEAD $f" >&2
+    exit 1
+  fi
+done
+
+# ── 2. TypeScript typecheck ──────────────────────────────────
+# Only run if .ts files are staged
+if echo "$staged_files" | grep -qE '\.ts$'; then
+  echo "pre-commit: typechecking..."
+  npm run typecheck
+fi
+
+# ── 3. ESLint ────────────────────────────────────────────────
+if echo "$staged_files" | grep -qE '\.(ts|js)$'; then
+  echo "pre-commit: linting..."
+  npm run lint
+fi
+
+# ── 4. Tests ─────────────────────────────────────────────────
+if echo "$staged_files" | grep -qE '\.(ts|js)$'; then
+  echo "pre-commit: running tests..."
+  npm test
+fi
+
+echo "pre-commit: all checks passed."

@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "alexcvzz.vscode-sqlite",
+    "ms-playwright.playwright",
+    "johnpapa.vscode-peacock"
+  ]
+}

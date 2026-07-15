@@ -1,0 +1,29 @@
+#!/bin/bash
+# @file prepare-commit-msg
+# @description Block sensitive patterns in commit messages
+# @version 1.0.0
+# @created 2026-04-15T17:15:45Z
+# @lastUpdated 2026-04-15T17:15:45Z
+
+COMMIT_MSG_FILE="$1"
+
+# Patterns that should never appear in commit messages
+BLOCKED_PATTERNS=(
+  "password"
+  "secret"
+  "api[._-]key"
+  "token[[:space:]]*="
+  "session[._-]cookie"
+  "sessionKey"
+  "Bearer "
+)
+
+for pattern in "${BLOCKED_PATTERNS[@]}"; do
+  if grep -iqE "$pattern" "$COMMIT_MSG_FILE"; then
+    echo "BLOCKED: Commit message contains sensitive pattern: '$pattern'" >&2
+    echo "Remove this language before committing." >&2
+    exit 1
+  fi
+done
+
+exit 0

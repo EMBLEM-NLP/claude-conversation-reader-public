@@ -1,0 +1,40 @@
+#!/bin/bash
+# @file pre-push
+# @description Pre-push hook — full build, typecheck, lint, count audit
+# @version 1.0.0
+# @created 2026-04-15T17:15:45Z
+# @lastUpdated 2026-04-15T17:15:45Z
+
+set -euo pipefail
+
+echo "pre-push: running checks..."
+
+# ── 1. TypeScript typecheck ──────────────────────────────────
+echo "pre-push: typechecking..."
+npm run typecheck
+
+# ── 2. ESLint ────────────────────────────────────────────────
+echo "pre-push: linting..."
+npm run lint
+
+# ── 3. Full build ────────────────────────────────────────────
+echo "pre-push: building..."
+npm run build
+
+# ── 4. Count audit ───────────────────────────────────────────
+# Verify documented tool/command counts match actual code
+ACTUAL_TOOLS=$(grep -c "server.tool(" src/mcp/tools.ts)
+ACTUAL_COMMANDS=$(grep -c '\.command(' src/index.ts)
+
+# Check CLAUDE.md for declared tool count
+if grep -q "${ACTUAL_TOOLS} MCP tools" CLAUDE.md; then
+  echo "pre-push: MCP tool count OK ($ACTUAL_TOOLS)"
+else
+  DECLARED=$(grep -oP '\d+ MCP tools' CLAUDE.md | head -1)
+  echo "WARNING: CLAUDE.md says '$DECLARED' but actual count is $ACTUAL_TOOLS" >&2
+  echo "Update CLAUDE.md before pushing." >&2
+  exit 1
+fi
+
+echo "pre-push: CLI commands: $ACTUAL_COMMANDS"
+echo "pre-push: all checks passed."
