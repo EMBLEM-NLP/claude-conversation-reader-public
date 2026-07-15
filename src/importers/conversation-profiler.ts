@@ -1,9 +1,9 @@
 /**
  * @file conversation-profiler.ts
  * @description Semantic profiler: 20 regex categories + structural metrics + per-sender profiling
- * @version 2.0.0
+ * @version 2.1.0
  * @created 2026-04-17T03:34:43Z
- * @lastUpdated 2026-04-17T16:10:11Z
+ * @lastUpdated 2026-05-28T22:30:00Z
  */
 import Database from 'better-sqlite3';
 
@@ -74,6 +74,19 @@ export interface ProfileResult {
 export interface ProfileOptions {
   conversationUuids?: string[];
   verbose?: boolean;
+  /**
+   * If true: wipe all existing profile rows and re-profile every conversation.
+   * If false (default): incremental — only profile conversations that don't
+   * already have a profile row. Cuts re-run time on a 600-conv DB from
+   * ~10 minutes to ~instant.
+   */
+  rebuild?: boolean;
+  /**
+   * Wall-clock per-conversation threshold (ms) above which we log a warning
+   * with the UUID. Used to surface conversations whose text triggers
+   * catastrophic regex backtracking. Default 5000ms.
+   */
+  slowThresholdMs?: number;
 }
 
 export interface ProfileQueryOptions {
@@ -496,19 +509,46 @@ export function profileConversations(dbPath: string, opts?: ProfileOptions): Pro
   try {
     ensureProfileTable(db);
 
-    // Determine which conversations to profile
+    // Determine which conversations to profile.
+    //
+    // Three modes:
+    //   1. Explicit UUID list           → profile only those, wipe their rows first.
+    //   2. rebuild: true                → wipe everything and re-profile all (legacy v1 behavior).
+    //   3. Default (incremental)        → profile only convs that lack a profile row.
+    //      Cuts re-run time from ~10 min to ~instant on a 600-conv DB.
     let convUuids: string[];
     if (opts?.conversationUuids && opts.conversationUuids.length > 0) {
       convUuids = opts.conversationUuids;
-      // Clear only targeted profiles
       const delStmt = db.prepare('DELETE FROM conversation_profiles WHERE conversation_uuid = ?');
       for (const u of convUuids) delStmt.run(u);
-    } else {
+    } else if (opts?.rebuild) {
       db.exec('DELETE FROM conversation_profiles');
       convUuids = (db.prepare('SELECT uuid FROM conversations').all() as ConvRow[]).map((r) => r.uuid);
+    } else {
+      // Incremental: LEFT JOIN finds convs without a profile row.
+      convUuids = (db.prepare(`
+        SELECT c.uuid
+          FROM conversations c
+          LEFT JOIN conversation_profiles p ON p.conversation_uuid = c.uuid
+         WHERE p.conversation_uuid IS NULL
+      `).all() as ConvRow[]).map((r) => r.uuid);
+
+      const totalConvs = (db.prepare('SELECT COUNT(*) as n FROM conversations').get() as CountRow).n;
+      const alreadyProfiled = totalConvs - convUuids.length;
+      if (alreadyProfiled > 0) {
+        console.log(`Skipping ${alreadyProfiled} already-profiled conversation(s) (use --rebuild to redo).`);
+      }
+    }
+
+    if (convUuids.length === 0) {
+      console.log('Nothing to profile.');
+      return { totalProfiled: 0, avgDensity: 0, typeDistribution: {} };
     }
 
     console.log(`Profiling ${convUuids.length} conversations...`);
+
+    const slowThresholdMs = opts?.slowThresholdMs ?? 5000;
+    const slowConvs: Array<{ uuid: string; ms: number; words: number }> = [];
 
     const stmts = prepareStatements(db);
     const insertStmt = db.prepare(INSERT_SQL);
@@ -518,6 +558,8 @@ export function profileConversations(dbPath: string, opts?: ProfileOptions): Pro
 
     const runInsert = db.transaction((batch: string[]) => {
       for (const uuid of batch) {
+        const t0 = Date.now();
+
         // 1. Gather all text segments (with sender separation)
         const textData = gatherConversationText(stmts, uuid);
         const allText = textData.allTexts.join(' ');
@@ -566,14 +608,20 @@ export function profileConversations(dbPath: string, opts?: ProfileOptions): Pro
         typeDistribution[primaryType] = (typeDistribution[primaryType] ?? 0) + 1;
         densitySum += density;
 
+        const ms = Date.now() - t0;
+        if (ms > slowThresholdMs) {
+          slowConvs.push({ uuid, ms, words: textData.totalWords });
+        }
+
         if (opts?.verbose) {
-          console.log(`  ${uuid.slice(0, 8)}… type=${primaryType} density=${density.toFixed(3)} words=${textData.totalWords} code_blocks=${codeInfo.count} tools=${structural.toolInvocations} duration=${structural.durationMinutes.toFixed(0)}m`);
+          console.log(`  ${uuid.slice(0, 8)}… type=${primaryType} density=${density.toFixed(3)} words=${textData.totalWords} code_blocks=${codeInfo.count} tools=${structural.toolInvocations} duration=${structural.durationMinutes.toFixed(0)}m took=${ms}ms`);
         }
       }
     });
 
-    // Process in batches of 100 for progress reporting
-    const BATCH = 100;
+    // Smaller batches → shorter write-lock holds + more frequent progress flush.
+    // (Was 100 before; profile_all on a 600-conv DB held the lock ~10 min.)
+    const BATCH = 25;
     for (let i = 0; i < convUuids.length; i += BATCH) {
       const batch = convUuids.slice(i, i + BATCH);
       runInsert(batch);
@@ -583,6 +631,14 @@ export function profileConversations(dbPath: string, opts?: ProfileOptions): Pro
       }
     }
     if (convUuids.length > BATCH) process.stdout.write('\n');
+
+    if (slowConvs.length > 0) {
+      console.warn(`\n⚠  ${slowConvs.length} slow conversation(s) (>${slowThresholdMs}ms):`);
+      slowConvs.sort((a, b) => b.ms - a.ms);
+      for (const { uuid, ms, words } of slowConvs.slice(0, 10)) {
+        console.warn(`   ${uuid.slice(0, 12)}…  ${ms}ms  (${words.toLocaleString()} words)`);
+      }
+    }
 
     return {
       totalProfiled: convUuids.length,

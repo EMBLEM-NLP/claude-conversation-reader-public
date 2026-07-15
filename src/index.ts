@@ -613,11 +613,17 @@ program
 // ── profile ───────────────────────────────────────────────────
 program
   .command('profile <dbPath>')
-  .description('Build semantic profiles for all conversations (20 regex categories + structural metrics)')
+  .description('Build semantic profiles for all conversations (20 regex categories + structural metrics). Incremental by default — only un-profiled conversations are processed unless --rebuild.')
   .option('--verbose', 'Print per-conversation details')
+  .option('--rebuild', 'Wipe all profile rows and re-profile every conversation (slow on large DBs)')
+  .option('--slow-threshold <ms>', 'Log a warning for any conversation that takes longer than this many ms', parsePositiveInt, 5000 as unknown as number)
   .action((dbPath, options) => {
     try {
-      const result = profileConversations(path.resolve(dbPath), { verbose: options.verbose });
+      const result = profileConversations(path.resolve(dbPath), {
+        verbose: options.verbose,
+        rebuild: !!options.rebuild,
+        slowThresholdMs: options.slowThreshold,
+      });
       console.log(chalk.green(`Profiled ${result.totalProfiled} conversations.`));
       console.log(`  Avg technical density: ${result.avgDensity.toFixed(3)}`);
       console.log(chalk.white('  Type distribution:'));
