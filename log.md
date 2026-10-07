@@ -1,9 +1,9 @@
 ---
 title: Session Action Log
 description: Per-turn log of every action Claude takes in this repository's sessions
-version: 1.0.0
+version: 1.1.0
 created: 2026-10-07T20:35:26Z
-last_updated: 2026-10-07T20:36:04Z
+last_updated: 2026-10-07T20:36:59Z
 ---
 
 # Session Action Log
@@ -59,3 +59,21 @@ A new entry is added on every turn. Session: `claude/busy-brahmagupta-jd7wvc` (C
 - Paste the conversation text into the chat.
 - Run `ccr get <conversation-id>` on your own machine, where you are logged in, and paste or commit the output.
 - Log in to `ccr` locally, then copy the session into a cloud environment secret. Only do this if you accept the cookie-exposure risk.
+
+---
+
+## Turn 3 — 2026-10-07T20:36:59Z
+
+**Request:** Run `ccr login`.
+
+**Actions:**
+
+1. Ran `npm run dev -- login --help`. The available options are `--headless` and `--cookie <string>`. The container has no display (`DISPLAY` is empty), so only headless mode can run here.
+2. Ran `npm run dev -- login --headless`. It failed immediately: `browserType.launch: Executable doesn't exist at /opt/pw-browsers/chromium_headless_shell-1217/...`. The repo's Playwright version expects a different browser build from the one installed in the container.
+3. Confirmed that `~/.ccr/session.json` was not created.
+
+**Outcome:** Login failed, and no session exists.
+
+Fixing the browser build would not be enough. Claude.ai login needs a person to enter an email code or complete Google sign-in, and nobody can do that in a headless container. In Turn 2, Claude.ai's own API calls were also blocked from this environment.
+
+**Option that could work:** `ccr login --cookie "<cookie string>"`, using cookies copied from a logged-in browser's DevTools. Those cookies grant full access to the Claude.ai account, so they should go in an environment secret rather than in chat. Even with valid cookies, requests may still be blocked by this environment's network.
